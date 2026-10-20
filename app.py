@@ -3,13 +3,11 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
 import random
 import os
 
-# Use the installed Traditional Chinese font for chart labels and annotations.
-font_manager.findfont("Microsoft JhengHei", fallback_to_default=False)
-plt.rcParams["font.family"] = "Microsoft JhengHei"
+# Use Matplotlib's bundled cross-platform font for chart labels.
+plt.rcParams["font.family"] = "DejaVu Sans"
 plt.rcParams["axes.unicode_minus"] = False
 
 # 1. 頁面配置
@@ -185,8 +183,8 @@ with col_chart:
     x = np.arange(len(df_plot))
     
     # 繪製 EMA 均線
-    ax.plot(x, df_plot['EMA20'], color='#2962FF', linewidth=1.8, label="EMA 20 (短期動能)")
-    ax.plot(x, df_plot['EMA50'], color='#FF6D00', linewidth=1.8, label="EMA 50 (生命線)")
+    ax.plot(x, df_plot['EMA20'], color='#2962FF', linewidth=1.8, label="EMA 20 (Dynamic Support)")
+    ax.plot(x, df_plot['EMA50'], color='#FF6D00', linewidth=1.8, label="EMA 50 (Trend Line)")
     
     # 繪製 K 棒
     for i in range(len(df_plot)):
@@ -207,7 +205,7 @@ with col_chart:
     # 考題棒箭頭標記 (最後一根)
     target_idx = len(df_plot) - 1
     target_low = df_plot.loc[target_idx, 'Low']
-    ax.annotate('考題棒', 
+    ax.annotate('Signal Bar ⬆', 
                 xy=(target_idx, target_low), 
                 xytext=(target_idx, target_low - (df_plot['High'].max() - df_plot['Low'].min()) * 0.1),
                 arrowprops=dict(facecolor='#00E676', shrink=0.08, width=1.5, headwidth=6),
