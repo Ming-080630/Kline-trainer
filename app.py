@@ -11,7 +11,7 @@ plt.rcParams["font.family"] = "DejaVu Sans"
 plt.rcParams["axes.unicode_minus"] = False
 
 # 1. 頁面配置
-st.set_page_config(page_title="Candle Lab - K-Line Trainer", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Candle Lab - K-Line Trainer", page_icon="kline_trainer.ico", layout="wide", initial_sidebar_state="collapsed")
 
 # 現代暗黑風格 CSS
 st.markdown("""
