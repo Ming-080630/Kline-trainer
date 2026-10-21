@@ -283,10 +283,18 @@ def _quiz_slice(ticker, df, idx, pattern, fallback=False):
     sub_df = df.iloc[idx - WINDOW_SIZE + 1:idx + 1].copy()
     date = str(sub_df.index[-1])[:10]
     sub_df.index.name = "Date"
+    options = []
+    if pattern in PATTERN_DB:
+        distractors = random.sample(
+            [name for name in PATTERN_DB if name != pattern], 3
+        )
+        options = [pattern, *distractors]
+        random.shuffle(options)
     return {
         "ticker": ticker,
         "df": sub_df.reset_index(),
         "correct": pattern,
+        "options": options,
         "date": date,
         "fallback": fallback,
     }
@@ -462,7 +470,7 @@ div[data-testid="metric-container"] {
             st.markdown(f"**題目**：箭頭所標註的最後一根 K 棒（日期：{quiz['date']}），屬於何種型態？")
             st.caption("重疊判定：十字星 → 三日反轉 → 吞噬 → 刺透／烏雲 → 孕線 → 趨勢影線 → 一般影線 → 長實體。")
             choice = st.radio(
-                "請選擇答案：", list(PATTERN_DB), index=None,
+                "請選擇答案：", quiz["options"], index=None,
                 disabled=st.session_state.submitted,
                 key=f"answer_{st.session_state.quiz_number}",
             )
