@@ -6,7 +6,6 @@ import random
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib import font_manager, ft2font
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -15,40 +14,12 @@ import yfinance as yf
 
 
 APP_DIR = Path(__file__).resolve().parent
-FONT_FAMILY = ["Microsoft JhengHei", "SimHei", "sans-serif"]
-plt.rcParams["font.family"] = FONT_FAMILY
+plt.rcParams["font.sans-serif"] = ["DejaVu Sans", "Arial", "sans-serif"]
 plt.rcParams["axes.unicode_minus"] = False
 
 WINDOW_SIZE = 25
 MAX_QUIZ_ATTEMPTS = 500
 OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
-
-
-@st.cache_resource(show_spinner=False)
-def get_chart_font():
-    """Use an installed CJK font, or ASCII labels with bundled DejaVu Sans.
-
-    Generic sans-serif alone does not supply Chinese glyphs on Linux.
-    Resolve fonts before rendering rather than suppressing missing-font warnings.
-    """
-    preferred = FONT_FAMILY[:-1] + [
-        "Noto Sans CJK TC", "Noto Sans TC", "Noto Sans CJK SC",
-        "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Source Han Sans TC",
-    ]
-    priority = {name: index for index, name in enumerate(preferred)}
-    fonts = sorted(
-        font_manager.fontManager.ttflist,
-        key=lambda font: priority.get(font.name, len(priority)),
-    )
-    required = {ord(character) for character in "日考題棒"}
-    for font in fonts:
-        try:
-            glyphs = ft2font.FT2Font(font.fname).get_charmap()
-        except (OSError, RuntimeError):
-            continue
-        if required.issubset(glyphs):
-            return font.name, True
-    return "DejaVu Sans", False
 
 
 PATTERN_DB = {
@@ -354,8 +325,10 @@ def apple_touch_icon():
 
 def draw_chart(quiz):
     """Close every allocated figure, including when plotting/rendering fails."""
-    font_name, supports_chinese = get_chart_font()
-    with plt.rc_context({"font.family": [font_name], "axes.unicode_minus": False}):
+    with plt.rc_context({
+        "font.sans-serif": ["DejaVu Sans", "Arial", "sans-serif"],
+        "axes.unicode_minus": False,
+    }):
         fig, ax = plt.subplots(figsize=(10, 5.5), facecolor="#0e1117")
         try:
             ax.set_facecolor("#161b22")
@@ -375,13 +348,13 @@ def draw_chart(quiz):
             low = df.loc[target, "Low"]
             chart_range = max(float(df["High"].max() - df["Low"].min()), 0.01)
             ax.annotate(
-                "考題棒" if supports_chinese else "Signal Bar", xy=(target, low),
+                "Signal Bar ⬆", xy=(target, low),
                 xytext=(target, low - chart_range * 0.12),
                 arrowprops=dict(facecolor="#00E676", shrink=0.08, width=1.5, headwidth=6),
                 color="#00E676", ha="center", fontsize=12, fontweight="bold",
             )
             ax.set_title(
-                f"{quiz['ticker']} {'日 K' if supports_chinese else 'Daily K'} | {quiz['date']}",
+                f"{quiz['ticker']} - Daily Chart",
                 color="#c9d1d9", fontsize=15,
             )
             ax.grid(True, color="#21262d", linestyle="--", alpha=0.5)
