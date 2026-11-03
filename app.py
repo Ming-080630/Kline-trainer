@@ -19,6 +19,7 @@ plt.rcParams["axes.unicode_minus"] = False
 
 WINDOW_SIZE = 25
 MAX_QUIZ_ATTEMPTS = 500
+MAX_DECISION_ATTEMPTS_PER_TICKER = 300
 OHLC_COLUMNS = ["Open", "High", "Low", "Close"]
 
 
@@ -440,22 +441,72 @@ def _decision_signal_explanation(df):
 
 
 def generate_decision_quiz():
+    """Generate balanced BUY/PASS setups with bounded historical searches."""
     eligible = {
         ticker: df for ticker, df in load_data().items()
         if len(df) >= WINDOW_SIZE + 15
     }
     if not eligible:
         return None
-    ticker = random.choice(list(eligible))
-    df = eligible[ticker]
-    idx = random.randrange(WINDOW_SIZE - 1, len(df) - 15)
-    window = df.iloc[idx - WINDOW_SIZE + 1:idx + 1].copy()
+
+    target_type = random.choice(("BUY_SETUP", "PASS_SETUP"))
+    tickers = list(eligible)
+    random.shuffle(tickers)
+    candidate = None
+
+    # Sampling is bounded per ticker and across all symbols. A candidate must
+    # match the selected lesson type, so PASS questions cannot accidentally
+    # teach users to skip a complete SOP setup.
+    for ticker in tickers:
+        df = eligible[ticker]
+        for _ in range(min(MAX_DECISION_ATTEMPTS_PER_TICKER, len(df) - WINDOW_SIZE - 14)):
+            idx = random.randrange(WINDOW_SIZE - 1, len(df) - 15)
+            window = df.iloc[idx - WINDOW_SIZE + 1:idx + 1].copy()
+            checks = _decision_checks(window)
+            sop_ok = all(checks.values())
+            if (target_type == "BUY_SETUP" and sop_ok) or (
+                target_type == "PASS_SETUP" and not sop_ok
+            ):
+                candidate = (ticker, df, idx, window, checks)
+                break
+        if candidate is not None:
+            break
+
+    # If random sampling misses a rare class, make one bounded pass over the
+    # history (at most 5 years x 3 symbols) before choosing a safe fallback.
+    if candidate is None:
+        fallback_candidates = []
+        for ticker in tickers:
+            df = eligible[ticker]
+            for idx in range(WINDOW_SIZE - 1, len(df) - 15):
+                window = df.iloc[idx - WINDOW_SIZE + 1:idx + 1]
+                checks = _decision_checks(window)
+                sop_ok = all(checks.values())
+                if (target_type == "BUY_SETUP" and sop_ok) or (
+                    target_type == "PASS_SETUP" and not sop_ok
+                ):
+                    fallback_candidates.append((ticker, df, idx, window.copy(), checks))
+                    if len(fallback_candidates) >= 100:
+                        break
+            if fallback_candidates:
+                break
+        if fallback_candidates:
+            candidate = random.choice(fallback_candidates)
+
+    # No sample of the requested class exists. Keep the target honest and let
+    # the existing empty-state UI report that a question is unavailable.
+    if candidate is None:
+        return None
+
+    ticker, df, idx, window, checks = candidate
+
     return {
         "ticker": ticker,
         "df": window.reset_index(),
         "future": df.iloc[idx + 1:idx + 16].copy(),
-        "checks": _decision_checks(window),
+        "checks": checks,
         "date": str(df.index[idx])[:10],
+        "target_type": target_type,
     }
 
 
@@ -497,7 +548,7 @@ def _decision_feedback(decision, action):
     elif buy:
         message = "破壞紀律，僥倖獲利是長期毒藥。"
     elif sop_ok:
-        message = "錯失標準機會，應依 SOP 勇敢執行。"
+        message = "❌ 錯失 A+ 標準機會！此處各項條件均完美符合 SOP，市場具備 1:2 正期望值，缺乏勇氣依規則開槍是交易者的嚴重失職！"
     else:
         message = "自律避險，觀望符合交易紀律。"
     result = settle_long(decision) if buy else {
