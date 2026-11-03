@@ -393,6 +393,52 @@ def _decision_checks(df):
     return {"trend": trend, "pullback": pullback, "signal": signal, "risk": risk}
 
 
+def _decision_signal_explanation(df):
+    """Return the actual candle classification and a specific long-side reason."""
+    pattern = detect_pattern(df, len(df) - 1) if len(df) else None
+    current = _candle(df.iloc[-1]) if len(df) else None
+    previous = _candle(df.iloc[-2]) if len(df) > 1 else None
+    # Give the decision report explicit bearish names even where the quiz
+    # classifier's existing priority assigns an overlapping candle elsewhere.
+    if current is not None and current["close"] < current["open"]:
+        if (
+            current["body"] >= current["range"] * 0.8
+            and pattern not in {"看跌吞噬 (Bearish Engulfing)"}
+        ):
+            pattern = "大陰線 (Long Bearish)"
+        if (
+            previous is not None
+            and previous["close"] > previous["open"]
+            and current["open"] >= previous["close"]
+            and current["close"] <= previous["open"]
+        ):
+            pattern = "看跌吞噬 (Bearish Engulfing)"
+    name = pattern or "普通 K 棒 (無反轉特徵)"
+    bearish_patterns = {
+        "流星線 (Shooting Star)",
+        "上吊線 (Hanging Man)",
+        "大陰線 (Long Bearish)",
+        "看跌吞噬 (Bearish Engulfing)",
+        "看跌孕線 (Bearish Harami)",
+        "烏雲罩頂 (Dark Cloud Cover)",
+        "黃昏之星 (Evening Star)",
+    }
+    indecision_patterns = {
+        "十字星 (Doji)",
+        "看漲孕線 (Bullish Harami)",
+        "看跌孕線 (Bearish Harami)",
+    }
+    if pattern in indecision_patterns:
+        reason = "多空處於僵持猶豫，尚未出現多頭表態訊號。"
+    elif pattern in bearish_patterns:
+        reason = "當前出現明顯賣壓/空頭型態，此處做多極易遭摜壓。"
+    elif pattern is None:
+        reason = "下影線長度不足（未達實體 2 倍），亦非看漲吞噬，缺少多頭強勢拒絕破位的扳機訊號。"
+    else:
+        reason = "雖辨識到型態，但它不在本 SOP 允許的做多訊號清單內。"
+    return name, reason
+
+
 def generate_decision_quiz():
     eligible = {
         ticker: df for ticker, df in load_data().items()
@@ -592,15 +638,19 @@ def _render_decision_tab():
                 f"{decision['df'].iloc[-6]['EMA20']:.2f}"
             )
             distance = abs(float(current["Low"]) - float(current["EMA20"])) / float(current["EMA20"]) * 100 if current["EMA20"] else float("inf")
+            signal_name, signal_reason = _decision_signal_explanation(decision["df"])
             details = {
                 "trend": trend_text,
                 "pullback": f"Low 到 EMA20 距離 {distance:.2f}%；收盤偏離 {float(current['Close']) / float(current['EMA20']) - 1:.2%}" if current["EMA20"] else "EMA20 無效",
-                "signal": f"最後一棒判定：{detect_pattern(decision['df'], len(decision['df']) - 1) or '無指定訊號'}",
+                "signal": f"最後一棒判定：{signal_name}",
                 "risk": f"預設進場 {float(current['High']):.2f}；停損 {float(current['Low']) * 0.997:.2f}；停利 {float(current['High']) + 2 * (float(current['High']) - float(current['Low']) * 0.997):.2f}（1:2）",
             }
             for key, label in labels.items():
                 passed = decision["checks"][key]
                 st.write(f"{'✅' if passed else '❌'} {label}：{'通過' if passed else '未通過'}；{details[key]}")
+                if key == "signal" and not passed:
+                    st.warning(signal_reason)
+            st.info("做多進場僅認可【鎚子線 (Pin Bar)】或【看漲吞噬 (Bullish Engulfing)】。")
             if result["entry"] is not None:
                 st.caption(f"進場 {result['entry']:.2f} | 停損 {result['stop']:.2f} | 停利 {result['target']:.2f}")
             if st.button("下一局決策 ➔", key="decision_next", use_container_width=True):
