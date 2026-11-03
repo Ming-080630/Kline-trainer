@@ -209,13 +209,13 @@ def detect_pattern(df, idx):
 
 @st.cache_resource(show_spinner=False)
 def load_data():
-    """Cache SPY/QQQ in server memory across reruns and sessions.
+    """Cache SPY, QQQ and GLD in server memory across reruns and sessions.
 
     This is not disk persistence: restart/clear requires another download.
     Network timeouts and unavailable responses are handled below.
     """
     data = {}
-    for ticker in ("SPY", "QQQ"):
+    for ticker in ("SPY", "QQQ", "GLD"):
         try:
             df = yf.download(
                 ticker, period="5y", interval="1d", progress=False,
@@ -323,7 +323,7 @@ def apple_touch_icon():
         return ""
 
 
-def draw_chart(quiz):
+def draw_chart(quiz, marker="Signal Bar ⬆"):
     """Close every allocated figure, including when plotting/rendering fails."""
     with plt.rc_context({
         "font.sans-serif": ["DejaVu Sans", "Arial", "sans-serif"],
@@ -348,7 +348,7 @@ def draw_chart(quiz):
             low = df.loc[target, "Low"]
             chart_range = max(float(df["High"].max() - df["Low"].min()), 0.01)
             ax.annotate(
-                "Signal Bar ⬆", xy=(target, low),
+                marker, xy=(target, low),
                 xytext=(target, low - chart_range * 0.12),
                 arrowprops=dict(facecolor="#00E676", shrink=0.08, width=1.5, headwidth=6),
                 color="#00E676", ha="center", fontsize=12, fontweight="bold",
@@ -371,17 +371,250 @@ def draw_chart(quiz):
             plt.close(fig)
 
 
-def main():
-    icon_path = APP_DIR / "kline_trainer.ico"
-    st.set_page_config(
-        page_title="Candle Lab - K-Line Trainer",
-        page_icon=str(icon_path) if icon_path.is_file() else "📈",
-        layout="wide", initial_sidebar_state="collapsed",
+def _decision_checks(df):
+    """Evaluate the objective SOP conditions at the current decision bar."""
+    if len(df) < 6:
+        return {"trend": False, "pullback": False, "signal": False, "risk": False}
+    current = df.iloc[-1]
+    trend = bool(
+        current["Close"] > current["EMA20"] > current["EMA50"]
+        and current["EMA20"] > df.iloc[-6]["EMA20"]
     )
-    icon = apple_touch_icon()
+    ema20 = float(current["EMA20"])
+    pullback = bool(
+        ema20 > 0
+        and abs(float(current["Low"]) - ema20) / ema20 <= 0.02
+        and float(current["Close"]) / ema20 <= 1.03
+    )
+    signal = detect_pattern(df, len(df) - 1) in {
+        "鎚子線 (Hammer / Pin Bar)", "看漲吞噬 (Bullish Engulfing)"
+    }
+    risk = bool(float(current["High"]) > float(current["Low"]))
+    return {"trend": trend, "pullback": pullback, "signal": signal, "risk": risk}
+
+
+def generate_decision_quiz():
+    eligible = {
+        ticker: df for ticker, df in load_data().items()
+        if len(df) >= WINDOW_SIZE + 15
+    }
+    if not eligible:
+        return None
+    ticker = random.choice(list(eligible))
+    df = eligible[ticker]
+    idx = random.randrange(WINDOW_SIZE - 1, len(df) - 15)
+    window = df.iloc[idx - WINDOW_SIZE + 1:idx + 1].copy()
+    return {
+        "ticker": ticker,
+        "df": window.reset_index(),
+        "future": df.iloc[idx + 1:idx + 16].copy(),
+        "checks": _decision_checks(window),
+        "date": str(df.index[idx])[:10],
+    }
+
+
+def settle_long(decision):
+    """Simulate a long order and scan future bars in chronological order."""
+    current = decision["df"].iloc[-1]
+    entry = float(current["High"])
+    stop = float(current["Low"]) * 0.997
+    risk = entry - stop
+    target = entry + 2.0 * risk
+    future = decision["future"]
+    details = {"entry": entry, "stop": stop, "target": target}
+    if future.empty or risk <= 0:
+        return {**details, "r": 0.0, "label": "0.0 R (無後續資料)"}
+    first = future.iloc[0]
+    signal_low = float(current["Low"])
+    if float(first["High"]) < entry and float(first["Low"]) < signal_low:
+        return {**details, "r": 0.0, "label": "0.0 R (未觸發取消)"}
+    for _, bar in future.iterrows():
+        # Daily OHLC cannot reveal intraday order when both levels are touched.
+        # Use the conservative stop-first convention for same-bar ambiguity.
+        hit_stop = float(bar["Low"]) <= stop
+        hit_target = float(bar["High"]) >= target
+        if hit_stop:
+            return {**details, "r": -1.0, "label": "-1.0 R (觸發停損)"}
+        if hit_target:
+            return {**details, "r": 2.0, "label": "+2.0 R (停利達標)"}
+    final_r = (float(future.iloc[-1]["Close"]) - entry) / risk
+    return {**details, "r": final_r, "label": f"{final_r:+.2f} R (15 棒浮動結算)"}
+
+
+def _decision_feedback(decision, action):
+    checks = decision["checks"]
+    sop_ok = all(checks.values())
+    buy = action == "buy"
+    score = 100 if buy == sop_ok else 0
+    if buy and sop_ok:
+        message = "符合 SOP；即使停損，虧損仍是正常成本，請維持正期望值。"
+    elif buy:
+        message = "破壞紀律，僥倖獲利是長期毒藥。"
+    elif sop_ok:
+        message = "錯失標準機會，應依 SOP 勇敢執行。"
+    else:
+        message = "自律避險，觀望符合交易紀律。"
+    result = settle_long(decision) if buy else {
+        "r": 0.0, "label": "未進場 (觀望)",
+        "entry": None, "stop": None, "target": None,
+    }
+    return {"score": score, "message": message, "result": result}
+
+
+def _render_pattern_tab():
+    defaults = {
+        "quiz": None, "submitted": False, "choice": None,
+        "total": 0, "correct": 0, "streak": 0, "number": 0,
+    }
+    for key, value in defaults.items():
+        st.session_state.setdefault(f"pattern_{key}", value)
+    if st.session_state.pattern_quiz is None:
+        st.session_state.pattern_quiz = generate_quiz()
+    quiz = st.session_state.pattern_quiz
+    if quiz is None:
+        st.warning("暫時無法取得 SPY、QQQ、GLD 歷史資料。")
+        return
+    accuracy = 100 * st.session_state.pattern_correct / st.session_state.pattern_total if st.session_state.pattern_total else 0
+    a, b, c = st.columns(3)
+    a.metric("作答總數", f"{st.session_state.pattern_total} 題")
+    b.metric("答對率", f"{accuracy:.1f}%")
+    c.metric("連續答對 Streak", f"{st.session_state.pattern_streak} 題")
+    left, right = st.columns([65, 35])
+    with left:
+        st.subheader(f"📊 {quiz['ticker']} 日 K 局部")
+        draw_chart(quiz)
+    with right:
+        st.subheader("❓ 型態判斷題")
+        if quiz["correct"] is None:
+            st.info("本題為安全觀察切片，不計分。")
+        else:
+            st.markdown(f"**日期：** {quiz['date']}，請判斷最後一根 K 棒。")
+            choice = st.radio(
+                "請選擇答案：", quiz["options"], index=None,
+                disabled=st.session_state.pattern_submitted,
+                key=f"pattern_answer_{st.session_state.pattern_number}",
+            )
+            if not st.session_state.pattern_submitted and st.button(
+                "確認提交答案", type="primary", use_container_width=True,
+                key="pattern_submit",
+            ):
+                if choice is None:
+                    st.warning("請先選取一個選項！")
+                else:
+                    st.session_state.pattern_submitted = True
+                    st.session_state.pattern_choice = choice
+                    st.session_state.pattern_total += 1
+                    if choice == quiz["correct"]:
+                        st.session_state.pattern_correct += 1
+                        st.session_state.pattern_streak += 1
+                    else:
+                        st.session_state.pattern_streak = 0
+                    st.rerun()
+            if st.session_state.pattern_submitted:
+                if st.session_state.pattern_choice == quiz["correct"]:
+                    st.success("✅ 回答正確！")
+                else:
+                    st.error(f"❌ 正確答案：{quiz['correct']}")
+                info = PATTERN_DB[quiz["correct"]]
+                st.info(f"結構解析：{info['desc']}\n\n多空力道心理：{info['psychology']}")
+        if quiz["correct"] is None or st.session_state.pattern_submitted:
+            if st.button("下一題 ➔", key="pattern_next", use_container_width=True):
+                st.session_state.pattern_quiz = None
+                st.session_state.pattern_submitted = False
+                st.session_state.pattern_choice = None
+                st.session_state.pattern_number += 1
+                st.rerun()
+    with st.expander("📖 15 種經典 K 線型態學習庫"):
+        for name, info in PATTERN_DB.items():
+            st.markdown(f"**{name}**\n\n{info['desc']}\n\n多空心理：{info['psychology']}")
+
+
+def _render_decision_tab():
+    defaults = {
+        "quiz": None, "feedback": None, "total": 0,
+        "r": 0.0, "perfect": 0, "number": 0,
+    }
+    for key, value in defaults.items():
+        st.session_state.setdefault(f"decision_{key}", value)
+    if st.session_state.decision_quiz is None:
+        st.session_state.decision_quiz = generate_decision_quiz()
+    decision = st.session_state.decision_quiz
+    if decision is None:
+        st.warning("暫時無法取得足夠的歷史資料。")
+        return
+    rate = 100 * st.session_state.decision_perfect / st.session_state.decision_total if st.session_state.decision_total else 0
+    a, b, c = st.columns(3)
+    a.metric("模擬總筆數", st.session_state.decision_total)
+    b.metric("累積 R 值", f"{st.session_state.decision_r:+.2f} R")
+    c.metric("SOP 滿分執行率", f"{rate:.1f}%")
+    left, right = st.columns([65, 35])
+    with left:
+        st.subheader(f"📊 {decision['ticker']} Decision Setup")
+        draw_chart(
+            {"df": decision["df"], "ticker": decision["ticker"], "date": decision["date"]},
+            marker="Decision Bar ⬆",
+        )
+    with right:
+        st.subheader("⚡ 做多 vs 觀望")
+        if st.session_state.decision_feedback is None:
+            buy_col, pass_col = st.columns(2)
+            if buy_col.button("🟢 進場做多 (Buy)", key="decision_buy", use_container_width=True):
+                feedback = _decision_feedback(decision, "buy")
+                st.session_state.decision_feedback = feedback
+                st.session_state.decision_total += 1
+                st.session_state.decision_r += feedback["result"]["r"]
+                st.session_state.decision_perfect += int(feedback["score"] == 100)
+                st.rerun()
+            if pass_col.button("⚪ 觀望略過 (Pass)", key="decision_pass", use_container_width=True):
+                feedback = _decision_feedback(decision, "pass")
+                st.session_state.decision_feedback = feedback
+                st.session_state.decision_total += 1
+                st.session_state.decision_perfect += int(feedback["score"] == 100)
+                st.rerun()
+        else:
+            feedback = st.session_state.decision_feedback
+            message = f"決策評分：{feedback['score']} 分\n\n{feedback['message']}"
+            if feedback["score"] == 100:
+                st.success(message)
+            else:
+                st.error(message)
+            result = feedback["result"]
+            st.metric("市場結果", result["label"])
+            st.markdown("**SOP 檢核明細**")
+            labels = {
+                "trend": "趨勢方向", "pullback": "回踩位置",
+                "signal": "訊號棒辨識", "risk": "風控設定",
+            }
+            current = decision["df"].iloc[-1]
+            trend_text = (
+                f"Close {current['Close']:.2f} > EMA20 {current['EMA20']:.2f} "
+                f"> EMA50 {current['EMA50']:.2f}; EMA20 五日前 "
+                f"{decision['df'].iloc[-6]['EMA20']:.2f}"
+            )
+            distance = abs(float(current["Low"]) - float(current["EMA20"])) / float(current["EMA20"]) * 100 if current["EMA20"] else float("inf")
+            details = {
+                "trend": trend_text,
+                "pullback": f"Low 到 EMA20 距離 {distance:.2f}%；收盤偏離 {float(current['Close']) / float(current['EMA20']) - 1:.2%}" if current["EMA20"] else "EMA20 無效",
+                "signal": f"最後一棒判定：{detect_pattern(decision['df'], len(decision['df']) - 1) or '無指定訊號'}",
+                "risk": f"預設進場 {float(current['High']):.2f}；停損 {float(current['Low']) * 0.997:.2f}；停利 {float(current['High']) + 2 * (float(current['High']) - float(current['Low']) * 0.997):.2f}（1:2）",
+            }
+            for key, label in labels.items():
+                passed = decision["checks"][key]
+                st.write(f"{'✅' if passed else '❌'} {label}：{'通過' if passed else '未通過'}；{details[key]}")
+            if result["entry"] is not None:
+                st.caption(f"進場 {result['entry']:.2f} | 停損 {result['stop']:.2f} | 停利 {result['target']:.2f}")
+            if st.button("下一局決策 ➔", key="decision_next", use_container_width=True):
+                st.session_state.decision_quiz = None
+                st.session_state.decision_feedback = None
+                st.session_state.decision_number += 1
+                st.rerun()
+
+
+def main():
+    st.set_page_config(page_title="Candle Lab", page_icon="📈", layout="wide")
     st.markdown(
-        '<head><link rel="apple-touch-icon" sizes="180x180" '
-        f'href="data:image/png;base64,{icon}">'
+        '<head><link rel="apple-touch-icon" '
+        'href="https://img.icons8.com/fluency/180/candlestick-chart.png">'
         '<meta name="apple-mobile-web-app-capable" content="yes"></head>',
         unsafe_allow_html=True,
     )
@@ -402,87 +635,15 @@ div[data-testid="metric-container"] {
 }
 </style>
 """, unsafe_allow_html=True)
-    defaults = {
-        "total_count": 0, "correct_count": 0, "streak": 0,
-        "current_quiz": None, "submitted": False, "quiz_number": 0,
-        "submitted_choice": None,
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-    st.markdown("## ⚡ CANDLE LAB | K 線型態訓練器")
-    if st.session_state.current_quiz is None:
-        with st.spinner("正在載入 SPY / QQQ 五年日 K 並抽取題目…"):
-            st.session_state.current_quiz = generate_quiz()
-    quiz = st.session_state.current_quiz
-    if quiz is None:
-        st.warning("暫時無法取得足夠的 SPY / QQQ 歷史資料，請確認網路後重試。")
-        if st.button("重新載入資料", type="primary"):
-            load_data.clear()
-            st.rerun()
-        return
-
-    acc = 100 * st.session_state.correct_count / st.session_state.total_count if st.session_state.total_count else 0.0
-    col1, col2, col3 = st.columns(3)
-    col1.metric("累積題數", f"{st.session_state.total_count} 題")
-    col2.metric("辨識準確率", f"{acc:.1f} %")
-    col3.metric("連續答對 (Streak)", f"🔥 {st.session_state.streak} 題")
-    st.markdown("---")
-
-    col_chart, col_quiz = st.columns([65, 35])
-    with col_chart:
-        st.subheader(f"📊 標的走勢：{quiz['ticker']} (日 K 局部)")
-        draw_chart(quiz)
-        st.caption("請一併觀察最後三根 K 棒與先前趨勢。陽線為綠色，陰線為紅色。")
-    with col_quiz:
-        st.subheader("❓ 型態判斷題")
-        if quiz["correct"] is None:
-            st.info("500 次抽樣未找到符合規則的型態，已切換安全歷史切片。此題供觀察練習，不計分。")
-        else:
-            st.markdown(f"**題目**：箭頭所標註的最後一根 K 棒（日期：{quiz['date']}），屬於何種型態？")
-            st.caption("重疊判定：十字星 → 三日反轉 → 吞噬 → 刺透／烏雲 → 孕線 → 趨勢影線 → 一般影線 → 長實體。")
-            choice = st.radio(
-                "請選擇答案：", quiz["options"], index=None,
-                disabled=st.session_state.submitted,
-                key=f"answer_{st.session_state.quiz_number}",
-            )
-            if not st.session_state.submitted:
-                if st.button("確認提交答案 (Submit)", type="primary", use_container_width=True):
-                    if choice is None:
-                        st.warning("請先選取一個選項！")
-                    else:
-                        st.session_state.submitted = True
-                        st.session_state.submitted_choice = choice
-                        st.session_state.total_count += 1
-                        if choice == quiz["correct"]:
-                            st.session_state.correct_count += 1
-                            st.session_state.streak += 1
-                        else:
-                            st.session_state.streak = 0
-                        st.rerun()
-            else:
-                if st.session_state.submitted_choice == quiz["correct"]:
-                    st.success("✅ **回答正確！**")
-                else:
-                    st.error(f"❌ **回答錯誤！** 正確答案是：**{quiz['correct']}**")
-                info = PATTERN_DB[quiz["correct"]]
-                st.markdown(f"**💡 結構解析：**\n\n{info['desc']}")
-                st.markdown(f"**🔥 多空力道心理：**\n\n{info['psychology']}")
-
-        if quiz["correct"] is None or st.session_state.submitted:
-            if st.button("下一題 ➔ (Next)", use_container_width=True):
-                old_key = f"answer_{st.session_state.quiz_number}"
-                st.session_state.pop(old_key, None)
-                st.session_state.current_quiz = None
-                st.session_state.submitted = False
-                st.session_state.submitted_choice = None
-                st.session_state.quiz_number += 1
-                st.rerun()
-
-    with st.expander("📖 15 種經典 K 線型態學習庫"):
-        for name, info in PATTERN_DB.items():
-            st.markdown(f"**{name}**\n\n{info['desc']}\n\n多空心理：{info['psychology']}")
+    st.markdown("## ⚡ CANDLE LAB | 金融訓練中心")
+    pattern_tab, decision_tab = st.tabs([
+        "🎯 K 線型態辨識 (認型態)",
+        "⚡ 實戰決策模擬 (練 SOP)",
+    ])
+    with pattern_tab:
+        _render_pattern_tab()
+    with decision_tab:
+        _render_decision_tab()
 
 
 if __name__ == "__main__":
