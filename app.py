@@ -356,10 +356,10 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
     ))
     fig.add_annotation(
         x=dates.iloc[-1], y=float(df.iloc[-1]["Low"]),
-        text=marker, showarrow=True, arrowhead=2,
+        text=f"<b>{marker}</b>", showarrow=True, arrowhead=2,
         arrowcolor="#00E676", arrowwidth=2, ax=0, ay=45,
         font=dict(color="#00E676", size=14),
-        bgcolor="#161b22", borderpad=3,
+        bgcolor="rgba(0, 0, 0, 0)", borderpad=3,
     )
     spike_style = dict(
         showspikes=True, spikemode="across", spikesnap="cursor",
@@ -376,10 +376,18 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
         plot_bgcolor="#161b22", paper_bgcolor="#161b22",
         font=dict(family="Arial, sans-serif", color="#c9d1d9"),
         hovermode="x unified", spikedistance=-1, hoverdistance=-1,
-        hoverlabel=dict(bgcolor="#161b22", font_color="#c9d1d9"),
+        hoverlabel=dict(
+            bgcolor="#161b22", bordercolor="#30363d",
+            font=dict(color="#f0f6fc", size=13),
+        ),
         dragmode="pan", height=520,
         margin=dict(l=15, r=15, t=70, b=75),
-        legend=dict(orientation="h", y=1.02, x=0),
+        legend=dict(
+            orientation="h", y=1.02, x=0,
+            bgcolor="rgba(22, 27, 34, 0.85)",
+            bordercolor="#30363d", borderwidth=1,
+            font=dict(color="#f0f6fc", size=12),
+        ),
     )
     st.plotly_chart(
         fig, use_container_width=True,
