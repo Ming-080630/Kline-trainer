@@ -3,19 +3,15 @@ from io import BytesIO
 from pathlib import Path
 import random
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 from PIL import Image
 import streamlit as st
 import yfinance as yf
 
 
 APP_DIR = Path(__file__).resolve().parent
-plt.rcParams["font.sans-serif"] = ["DejaVu Sans", "Arial", "sans-serif"]
-plt.rcParams["axes.unicode_minus"] = False
 
 WINDOW_SIZE = 25
 MAX_QUIZ_ATTEMPTS = 500
@@ -325,51 +321,70 @@ def apple_touch_icon():
 
 
 def draw_chart(quiz, marker="Signal Bar ⬆"):
-    """Close every allocated figure, including when plotting/rendering fails."""
-    with plt.rc_context({
-        "font.sans-serif": ["DejaVu Sans", "Arial", "sans-serif"],
-        "axes.unicode_minus": False,
-    }):
-        fig, ax = plt.subplots(figsize=(10, 5.5), facecolor="#0e1117")
-        try:
-            ax.set_facecolor("#161b22")
-            df = quiz["df"]
-            x = np.arange(len(df))
-            ax.plot(x, df["EMA20"], color="#2962FF", linewidth=1.8, label="EMA 20")
-            ax.plot(x, df["EMA50"], color="#FF6D00", linewidth=1.8, label="EMA 50")
-            for i, row in df.iterrows():
-                color = "#26a69a" if row["Close"] >= row["Open"] else "#ef5350"
-                ax.plot([i, i], [row["Low"], row["High"]], color=color, linewidth=1.2)
-                body = abs(row["Close"] - row["Open"])
-                if body == 0:
-                    ax.hlines(row["Open"], i - 0.3, i + 0.3, color=color, linewidth=1.5)
-                else:
-                    ax.bar(i, body, bottom=min(row["Open"], row["Close"]), color=color, width=0.6)
-            target = len(df) - 1
-            low = df.loc[target, "Low"]
-            chart_range = max(float(df["High"].max() - df["Low"].min()), 0.01)
-            ax.annotate(
-                marker, xy=(target, low),
-                xytext=(target, low - chart_range * 0.12),
-                arrowprops=dict(facecolor="#00E676", shrink=0.08, width=1.5, headwidth=6),
-                color="#00E676", ha="center", fontsize=12, fontweight="bold",
-            )
-            ax.set_title(
-                f"{quiz['ticker']} - Daily Chart",
-                color="#c9d1d9", fontsize=15,
-            )
-            ax.grid(True, color="#21262d", linestyle="--", alpha=0.5)
-            ax.tick_params(colors="#8b949e", labelsize=11)
-            ticks = list(range(0, len(df), 5))
-            if target not in ticks:
-                ticks.append(target)
-            ax.set_xticks(ticks)
-            ax.set_xticklabels(pd.to_datetime(df.iloc[ticks]["Date"]).dt.strftime("%m/%d"))
-            ax.legend(facecolor="#161b22", edgecolor="#30363d", labelcolor="#c9d1d9")
-            fig.tight_layout()
-            st.pyplot(fig)
-        finally:
-            plt.close(fig)
+    """Render both training tabs with a shared interactive Plotly chart."""
+    df = quiz["df"]
+    dates = pd.to_datetime(df["Date"])
+    fig = go.Figure()
+    fig.add_trace(go.Candlestick(
+        x=dates, open=df["Open"], high=df["High"],
+        low=df["Low"], close=df["Close"], name="Price",
+        increasing_line_color="#26a69a", decreasing_line_color="#ef5350",
+        hoverinfo="skip",
+    ))
+    for column, label, color in (
+        ("EMA20", "EMA 20", "#2962FF"),
+        ("EMA50", "EMA 50", "#FF6D00"),
+    ):
+        fig.add_trace(go.Scatter(
+            x=dates, y=df[column], mode="lines", name=label,
+            line=dict(color=color, width=2),
+            hovertemplate=label + ": %{y:.4f}<extra></extra>",
+        ))
+    # A transparent Scatter provides consistent OHLC hover templates across
+    # Plotly versions, including versions without Candlestick.hovertemplate.
+    fig.add_trace(go.Scatter(
+        x=dates, y=df["Close"], mode="markers", name="OHLC",
+        marker=dict(size=12, color="rgba(0,0,0,0)"), showlegend=False,
+        customdata=df[OHLC_COLUMNS].to_numpy(),
+        hovertemplate=(
+            "Date: %{x|%Y-%m-%d}<br>"
+            "Open: %{customdata[0]:.4f}<br>"
+            "High: %{customdata[1]:.4f}<br>"
+            "Low: %{customdata[2]:.4f}<br>"
+            "Close: %{customdata[3]:.4f}<extra></extra>"
+        ),
+    ))
+    fig.add_annotation(
+        x=dates.iloc[-1], y=float(df.iloc[-1]["Low"]),
+        text=marker, showarrow=True, arrowhead=2,
+        arrowcolor="#00E676", arrowwidth=2, ax=0, ay=45,
+        font=dict(color="#00E676", size=14),
+        bgcolor="#161b22", borderpad=3,
+    )
+    spike_style = dict(
+        showspikes=True, spikemode="across", spikesnap="cursor",
+        spikedash="dash", spikecolor="#8b949e", spikethickness=1,
+        gridcolor="#21262d", zeroline=False,
+    )
+    fig.update_xaxes(
+        **spike_style, rangeslider_visible=False,
+        tickformat="%m/%d", hoverformat="%Y-%m-%d",
+    )
+    fig.update_yaxes(**spike_style, automargin=True)
+    fig.update_layout(
+        template="plotly_dark", title=f"{quiz['ticker']} - Daily Chart",
+        plot_bgcolor="#161b22", paper_bgcolor="#161b22",
+        font=dict(family="Arial, sans-serif", color="#c9d1d9"),
+        hovermode="x unified", spikedistance=-1, hoverdistance=-1,
+        hoverlabel=dict(bgcolor="#161b22", font_color="#c9d1d9"),
+        dragmode="pan", height=520,
+        margin=dict(l=15, r=15, t=70, b=75),
+        legend=dict(orientation="h", y=1.02, x=0),
+    )
+    st.plotly_chart(
+        fig, use_container_width=True,
+        config={"displayModeBar": False, "scrollZoom": False, "responsive": True},
+    )
 
 
 def _decision_checks(df):
@@ -683,9 +698,18 @@ def _render_decision_tab():
                 "signal": "訊號棒辨識", "risk": "風控設定",
             }
             current = decision["df"].iloc[-1]
+            close_ema20_sign = (
+                ">" if current["Close"] > current["EMA20"] else
+                "<" if current["Close"] < current["EMA20"] else "="
+            )
+            ema20_ema50_sign = (
+                ">" if current["EMA20"] > current["EMA50"] else
+                "<" if current["EMA20"] < current["EMA50"] else "="
+            )
             trend_text = (
-                f"Close {current['Close']:.2f} > EMA20 {current['EMA20']:.2f} "
-                f"> EMA50 {current['EMA50']:.2f}; EMA20 五日前 "
+                f"Close {current['Close']:.2f} {close_ema20_sign} EMA20 {current['EMA20']:.2f} "
+                f"{ema20_ema50_sign} EMA50 {current['EMA50']:.2f}"
+                f"（需滿足 Close > EMA20 > EMA50）；EMA20 五日前 "
                 f"{decision['df'].iloc[-6]['EMA20']:.2f}"
             )
             distance = abs(float(current["Low"]) - float(current["EMA20"])) / float(current["EMA20"]) * 100 if current["EMA20"] else float("inf")
