@@ -798,6 +798,20 @@ div[data-testid="metric-container"] {
 [data-testid="stPlotlyChart"] .infolayer > .legend text tspan {
     fill: #f0f6fc !important;
 }
+/* Preserve the tooltip colors even when Dark Reader rewrites SVG fills.
+   Lock its inline custom properties as well as the SVG presentation colors. */
+[data-testid="stPlotlyChart"] .hoverlayer .legend > rect.bg,
+[data-testid="stPlotlyChart"] .hoverlayer .hovertext > path {
+    --darkreader-inline-fill: #000000 !important;
+    --darkreader-inline-stroke: #64748b !important;
+    fill: #000000 !important;
+    stroke: #64748b !important;
+}
+[data-testid="stPlotlyChart"] .hoverlayer text,
+[data-testid="stPlotlyChart"] .hoverlayer text tspan {
+    --darkreader-inline-fill: #ffffff !important;
+    fill: #ffffff !important;
+}
 </style>
 """, unsafe_allow_html=True)
     st.markdown("## ⚡ CANDLE LAB | 金融訓練中心")
