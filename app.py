@@ -330,7 +330,7 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
         low=df["Low"], close=df["Close"], name="Price",
         increasing_line_color="#26a69a", decreasing_line_color="#ef5350",
         hoverinfo="skip",
-        hoverlabel=dict(bgcolor="#f0f6fc", font=dict(color="#111827", size=15)),
+        hoverlabel=dict(bgcolor="#000000", font=dict(color="#ffffff", size=15)),
     ))
     for column, label, color in (
         ("EMA20", "EMA 20", "#2962FF"),
@@ -339,7 +339,7 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
         fig.add_trace(go.Scatter(
             x=dates, y=df[column], mode="lines", name=label,
             line=dict(color=color, width=2),
-            hoverlabel=dict(bgcolor="#f0f6fc", font=dict(color="#111827", size=15)),
+            hoverlabel=dict(bgcolor="#000000", font=dict(color="#ffffff", size=15)),
             hovertemplate=label + ": %{y:.4f}<extra></extra>",
         ))
     # A transparent Scatter provides consistent OHLC hover templates across
@@ -348,7 +348,7 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
         x=dates, y=df["Close"], mode="markers", name="OHLC",
         marker=dict(size=12, color="rgba(0,0,0,0)"), showlegend=False,
         customdata=df[OHLC_COLUMNS].to_numpy(),
-        hoverlabel=dict(bgcolor="#f0f6fc", font=dict(color="#111827", size=15)),
+        hoverlabel=dict(bgcolor="#000000", font=dict(color="#ffffff", size=15)),
         hovertemplate=(
             "Date: %{x|%Y-%m-%d}<br>"
             "Open: %{customdata[0]:.4f}<br>"
@@ -380,8 +380,8 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
         font=dict(family="Arial, sans-serif", color="#c9d1d9"),
         hovermode="x unified", spikedistance=-1, hoverdistance=-1,
         hoverlabel=dict(
-            bgcolor="#f0f6fc", bordercolor="#64748b",
-            font=dict(color="#111827", size=15, family="Arial, sans-serif"),
+            bgcolor="#000000", bordercolor="#64748b",
+            font=dict(color="#ffffff", size=15, family="Arial, sans-serif"),
         ),
         dragmode="pan", height=520,
         margin=dict(l=15, r=15, t=70, b=75),
@@ -778,14 +778,14 @@ div[data-testid="metric-container"] {
 [data-testid="stPlotlyChart"] .gridlayer { display: none !important; }
 [data-testid="stPlotlyChart"] .hoverlayer .hovertext path,
 [data-testid="stPlotlyChart"] .hoverlayer .legend .bg {
-    fill: #f0f6fc !important;
+    fill: #000000 !important;
     fill-opacity: 1 !important;
     stroke: #64748b !important;
     filter: drop-shadow(0 4px 8px rgba(0,0,0,0.35));
 }
 [data-testid="stPlotlyChart"] .hoverlayer text,
 [data-testid="stPlotlyChart"] .hoverlayer text tspan {
-    fill: #111827 !important;
+    fill: #ffffff !important;
     fill-opacity: 1 !important;
     font-family: Arial, sans-serif !important;
     font-size: 15px !important;
