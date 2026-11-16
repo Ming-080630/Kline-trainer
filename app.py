@@ -330,6 +330,7 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
         low=df["Low"], close=df["Close"], name="Price",
         increasing_line_color="#26a69a", decreasing_line_color="#ef5350",
         hoverinfo="skip",
+        hoverlabel=dict(bgcolor="#0d1117", font=dict(color="#ffffff")),
     ))
     for column, label, color in (
         ("EMA20", "EMA 20", "#2962FF"),
@@ -338,6 +339,7 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
         fig.add_trace(go.Scatter(
             x=dates, y=df[column], mode="lines", name=label,
             line=dict(color=color, width=2),
+            hoverlabel=dict(bgcolor="#0d1117", font=dict(color="#ffffff")),
             hovertemplate=label + ": %{y:.4f}<extra></extra>",
         ))
     # A transparent Scatter provides consistent OHLC hover templates across
@@ -346,6 +348,7 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
         x=dates, y=df["Close"], mode="markers", name="OHLC",
         marker=dict(size=12, color="rgba(0,0,0,0)"), showlegend=False,
         customdata=df[OHLC_COLUMNS].to_numpy(),
+        hoverlabel=dict(bgcolor="#0d1117", font=dict(color="#ffffff")),
         hovertemplate=(
             "Date: %{x|%Y-%m-%d}<br>"
             "Open: %{customdata[0]:.4f}<br>"
@@ -373,24 +376,24 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
     fig.update_yaxes(**spike_style, automargin=True)
     fig.update_layout(
         template="plotly_dark", title=f"{quiz['ticker']} - Daily Chart",
-        plot_bgcolor="#161b22", paper_bgcolor="#161b22",
+        plot_bgcolor="#161b22", paper_bgcolor="#0e1117",
         font=dict(family="Arial, sans-serif", color="#c9d1d9"),
         hovermode="x unified", spikedistance=-1, hoverdistance=-1,
         hoverlabel=dict(
-            bgcolor="#161b22", bordercolor="#30363d",
-            font=dict(color="#f0f6fc", size=13),
+            bgcolor="#0d1117", bordercolor="#58a6ff",
+            font=dict(color="#ffffff", size=14, family="Arial, sans-serif"),
         ),
         dragmode="pan", height=520,
         margin=dict(l=15, r=15, t=70, b=75),
         legend=dict(
             orientation="h", y=1.02, x=0,
-            bgcolor="rgba(22, 27, 34, 0.85)",
+            bgcolor="#0d1117",
             bordercolor="#30363d", borderwidth=1,
-            font=dict(color="#f0f6fc", size=12),
+            font=dict(color="#ffffff", size=13),
         ),
     )
     st.plotly_chart(
-        fig, use_container_width=True,
+        fig, use_container_width=True, theme=None,
         config={"displayModeBar": False, "scrollZoom": False, "responsive": True},
     )
 
@@ -766,6 +769,12 @@ div[data-testid="metric-container"] {
     background-color: #161b22; border: 1px solid #30363d;
     padding: 16px 20px; border-radius: 8px;
 }
+.js-plotly-plot .plotly .hoverlayer .hovertext path { fill: #0d1117 !important; stroke: #58a6ff !important; }
+.js-plotly-plot .plotly .hoverlayer .hovertext text { fill: #ffffff !important; }
+.js-plotly-plot .plotly .hoverlayer .legend .bg { fill: #0d1117 !important; stroke: #58a6ff !important; }
+.js-plotly-plot .plotly .hoverlayer .legend text { fill: #ffffff !important; }
+.js-plotly-plot .plotly .legend .bg { fill: #0d1117 !important; stroke: #30363d !important; }
+.js-plotly-plot .plotly .legend text { fill: #ffffff !important; }
 </style>
 """, unsafe_allow_html=True)
     st.markdown("## ⚡ CANDLE LAB | 金融訓練中心")
