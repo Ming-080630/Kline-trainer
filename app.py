@@ -803,6 +803,7 @@ div[data-testid="metric-container"] {
 [data-testid="stPlotlyChart"] .hoverlayer .legend > rect.bg,
 [data-testid="stPlotlyChart"] .hoverlayer .hovertext > path {
     --darkreader-inline-fill: #000000 !important;
+    --darkreader-text-000000: #000000 !important;
     --darkreader-inline-stroke: #64748b !important;
     fill: #000000 !important;
     stroke: #64748b !important;
@@ -810,6 +811,7 @@ div[data-testid="metric-container"] {
 [data-testid="stPlotlyChart"] .hoverlayer text,
 [data-testid="stPlotlyChart"] .hoverlayer text tspan {
     --darkreader-inline-fill: #ffffff !important;
+    --darkreader-text-ffffff: #ffffff !important;
     fill: #ffffff !important;
 }
 </style>
