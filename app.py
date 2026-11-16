@@ -376,7 +376,7 @@ def draw_chart(quiz, marker="Signal Bar ⬆"):
     fig.update_yaxes(**spike_style, automargin=True)
     fig.update_layout(
         template="plotly_dark", title=f"{quiz['ticker']} - Daily Chart",
-        plot_bgcolor="#161b22", paper_bgcolor="#0e1117",
+        plot_bgcolor="#161b22", paper_bgcolor="#161b22",
         font=dict(family="Arial, sans-serif", color="#c9d1d9"),
         hovermode="x unified", spikedistance=-1, hoverdistance=-1,
         hoverlabel=dict(
@@ -769,12 +769,33 @@ div[data-testid="metric-container"] {
     background-color: #161b22; border: 1px solid #30363d;
     padding: 16px 20px; border-radius: 8px;
 }
-.js-plotly-plot .plotly .hoverlayer .hovertext path { fill: #0d1117 !important; stroke: #58a6ff !important; }
-.js-plotly-plot .plotly .hoverlayer .hovertext text { fill: #ffffff !important; }
-.js-plotly-plot .plotly .hoverlayer .legend .bg { fill: #0d1117 !important; stroke: #58a6ff !important; }
-.js-plotly-plot .plotly .hoverlayer .legend text { fill: #ffffff !important; }
-.js-plotly-plot .plotly .legend .bg { fill: #0d1117 !important; stroke: #30363d !important; }
-.js-plotly-plot .plotly .legend text { fill: #ffffff !important; }
+/* Keep browser contrast settings from replacing the chart's SVG colors. */
+[data-testid="stPlotlyChart"] .js-plotly-plot,
+[data-testid="stPlotlyChart"] .js-plotly-plot * {
+    forced-color-adjust: none;
+}
+/* Restore only the plotting area; do not recolor candle bodies or traces. */
+.js-plotly-plot .plotly .bglayer > rect.bg {
+    fill: #161b22 !important;
+}
+/* Unified hover is rendered as a legend inside hoverlayer. */
+.js-plotly-plot .plotly .hoverlayer .hovertext path,
+.js-plotly-plot .plotly .hoverlayer .legend .bg {
+    fill: #0d1117 !important;
+    fill-opacity: 1 !important;
+    stroke: #58a6ff !important;
+}
+.js-plotly-plot .plotly .hoverlayer text {
+    fill: #ffffff !important;
+    fill-opacity: 1 !important;
+}
+.js-plotly-plot .plotly .infolayer > .legend .bg {
+    fill: #161b22 !important;
+    stroke: #30363d !important;
+}
+.js-plotly-plot .plotly .infolayer > .legend text {
+    fill: #f0f6fc !important;
+}
 </style>
 """, unsafe_allow_html=True)
     st.markdown("## ⚡ CANDLE LAB | 金融訓練中心")
